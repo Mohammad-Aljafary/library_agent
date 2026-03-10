@@ -205,3 +205,19 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+# Docker
+.docker/
+docker-compose.override.yml
+
+# SSL/Certificates
+nginx/ssl/
+
+# Database
+db/library.db
+db/library.db-journal
+*.db
+*.db-journal
+
+# Editor
+.vscode/
+.idea/

@@ -27,6 +27,17 @@ def startup():
     seed_data()
 
 
+# ── Health check ───────────────────────────────────────────
+@app.get("/health")
+def health_check():
+    """Health check endpoint for Docker and monitoring."""
+    return {
+        "status": "healthy",
+        "service": "library-desk-agent",
+        "version": "1.0.0"
+    }
+
+
 # ── Schemas ────────────────────────────────────────────────
 class ChatRequest(BaseModel):
     session_id: str

@@ -1,0 +1,58 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: library-ollama
+    volumes:
+      - ollama_data:/root/.ollama
+    expose:
+      - "11434"
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: library-app
+    expose:
+      - "8000"
+    environment:
+      - DATABASE_HOST=sqlite:///./db/library.db
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=qwen2.5:3b
+    volumes:
+      - ./db:/app/db
+      - ./app:/app/app
+      - ./server:/app/server
+      - ./prompts:/app/prompts
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: unless-stopped
+    command: >
+      sh -c "
+        echo 'Pulling model in background...' &&
+        (wget -q -O /dev/null --post-data='{\"name\":\"qwen2.5:3b\"}' --header='Content-Type: application/json' http://ollama:11434/api/pull 2>&1 &) &&
+        echo 'Starting server...' &&
+        uvicorn server.main:app --host 0.0.0.0 --port 8000 --reload
+      "
+
+  nginx:
+    image: nginx:alpine
+    container_name: library-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - app
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
