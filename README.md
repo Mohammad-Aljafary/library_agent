@@ -25,6 +25,13 @@ A conversational AI agent for managing a library's books, customers, and orders 
 Prerequisites: **Docker** and **Docker Compose**
 
 ```bash
+# 1. Clone and enter the project
+git clone <repo-url> && cd assessment
+
+# 2. Copy the env file and adjust if needed
+cp .env.example .env
+
+# 3. Start everything
 make up
 ```
 
@@ -33,16 +40,17 @@ That's it. On first run this will:
 1. Generate a self-signed SSL certificate
 2. Pull the Ollama Docker image
 3. Download the qwen2.5:3b model (~1.9 GB)
-4. Build & start the FastAPI app
-5. Start Nginx on ports 80 (→ redirect) and 443 (HTTPS)
+4. Seed the database with sample books, customers, and orders
+5. Build & start the FastAPI app
+6. Start Nginx on ports 80 (→ redirect) and 443 (HTTPS)
 
 Open **https://localhost** and accept the browser warning (self-signed cert).
 
-### Other commands
+### Run Scripts
 
 | Command | Description |
 |---------|-------------|
-| `make up` | Start all services |
+| `make up` | Start all services (generates SSL cert on first run) |
 | `make down` | Stop all services |
 | `make restart` | Restart everything |
 | `make logs` | Tail all logs |
@@ -64,22 +72,54 @@ ollama pull qwen2.5:3b
 # 2. Python environment
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env
 
-# 3. Seed database & run
+# 3. Configure environment
+cp .env.example .env          # then edit .env if needed
+
+# 4. Seed the database
 python db/seed.py
+
+# 5. Run the server
 uvicorn server.main:app --reload --port 8000
 ```
 
 Open http://localhost:8000
 
+## Database Seeding
+
+The database is seeded automatically on first startup (both Docker and local). The seed script (`db/seed.py`) populates:
+
+- **7 books** — Clean Code, The Pragmatic Programmer, The C Programming Language, Fluent Python, The Art of Computer Programming, The Clean Coder, Clean Architecture
+- **3 customers** — John Doe, Jane Smith, Bob Johnson
+- **4 sample orders**
+
+Seeding is idempotent — running it again skips if data already exists.
+
+To re-seed from scratch:
+
+```bash
+# Docker
+make reset-db
+
+# Local
+rm -f db/library.db && python db/seed.py
+```
+
 ## Environment Variables
+
+All configuration lives in `.env` (see `.env.example` for reference).
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DATABASE_HOST` | `sqlite:///./db/library.db` | Database connection |
+| `DATABASE_HOST` | `sqlite:///./db/library.db` | Database connection string |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama endpoint |
 | `OLLAMA_MODEL` | `qwen2.5:3b` | LLM model name |
+| `APP_PORT` | `8000` | Server port |
+| `APP_HOST` | `0.0.0.0` | Server bind address |
+| `CORS_ORIGINS` | `*` | Allowed origins (comma-separated) |
+| `OLLAMA_TEMPERATURE` | `0` | LLM temperature |
+| `OLLAMA_NUM_PREDICT` | `2048` | Max tokens per response |
+| `MAX_CHAT_HISTORY` | `20` | Messages included in agent context |
 
 ## API Endpoints
 
