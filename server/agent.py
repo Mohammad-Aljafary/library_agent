@@ -15,8 +15,8 @@ def get_llm(streaming=False):
     return ChatOllama(
         model=os.getenv("OLLAMA_MODEL", "qwen2.5:3b"),
         base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
-        temperature=0,  # Zero temperature for consistent tool calling
-        num_predict=2048,  # Increased for better reasoning
+        temperature=int(os.getenv("OLLAMA_TEMPERATURE", "0")),
+        num_predict=int(os.getenv("OLLAMA_NUM_PREDICT", "2048")),
         streaming=streaming,
         format="",  # Ensure no JSON mode that could interfere
     )
@@ -27,7 +27,9 @@ def get_system_prompt() -> str:
     return path.read_text()
 
 
-def get_chat_history(db: Session, session_id: str, max_messages: int = 20) -> list:
+def get_chat_history(db: Session, session_id: str, max_messages: int = None) -> list:
+    if max_messages is None:
+        max_messages = int(os.getenv("MAX_CHAT_HISTORY", "20"))
     """Build chat history including tool calls for conversational context.
     Limited to recent messages to reduce processing time.
     """

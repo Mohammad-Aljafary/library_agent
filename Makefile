@@ -1,5 +1,8 @@
 .PHONY: help up down restart logs logs-app logs-ollama clean ps build shell reset-db pull-model
 
+-include .env
+export
+
 help: ## Show available commands
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
 
@@ -43,7 +46,7 @@ reset-db: ## Wipe and re-seed the database
 	docker compose restart app
 
 pull-model: ## Pull / update the LLM model inside Ollama
-	docker compose exec ollama ollama pull qwen2.5:3b
+	docker compose exec ollama ollama pull $(OLLAMA_MODEL)
 
 # ── SSL certificate generation (auto-runs on `make up` if missing) ──
 nginx/ssl/cert.pem:

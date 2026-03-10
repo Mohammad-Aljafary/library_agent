@@ -19,11 +19,17 @@ services:
       dockerfile: Dockerfile
     container_name: library-app
     expose:
-      - "8000"
+      - "${APP_PORT:-8000}"
     environment:
-      - DATABASE_HOST=sqlite:///./db/library.db
+      - DATABASE_HOST=${DATABASE_HOST:-sqlite:///./db/library.db}
       - OLLAMA_BASE_URL=http://ollama:11434
-      - OLLAMA_MODEL=qwen2.5:3b
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:3b}
+      - APP_PORT=${APP_PORT:-8000}
+      - APP_HOST=${APP_HOST:-0.0.0.0}
+      - CORS_ORIGINS=${CORS_ORIGINS:-*}
+      - OLLAMA_TEMPERATURE=${OLLAMA_TEMPERATURE:-0}
+      - OLLAMA_NUM_PREDICT=${OLLAMA_NUM_PREDICT:-2048}
+      - MAX_CHAT_HISTORY=${MAX_CHAT_HISTORY:-20}
     volumes:
       - ./db:/app/db
       - ./app:/app/app
@@ -36,9 +42,9 @@ services:
     command: >
       sh -c "
         echo 'Pulling model in background...' &&
-        (wget -q -O /dev/null --post-data='{\"name\":\"qwen2.5:3b\"}' --header='Content-Type: application/json' http://ollama:11434/api/pull 2>&1 &) &&
+        (wget -q -O /dev/null --post-data='{\"name\":\"'$$OLLAMA_MODEL'\"}' --header='Content-Type: application/json' http://ollama:11434/api/pull 2>&1 &) &&
         echo 'Starting server...' &&
-        uvicorn server.main:app --host 0.0.0.0 --port 8000 --reload
+        uvicorn server.main:app --host $$APP_HOST --port $$APP_PORT --reload
       "
 
   nginx:
