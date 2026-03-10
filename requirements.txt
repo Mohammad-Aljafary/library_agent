@@ -1,0 +1,7 @@
+sqlalchemy
+langchain
+langchain-ollama
+langchain-core
+fastapi
+uvicorn[standard]
+python-dotenv
