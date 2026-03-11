@@ -22,10 +22,6 @@ COPY . .
 # Create database directory
 RUN mkdir -p /app/db
 
-# Initialize database
-RUN python -c "from db.tables import engine, Base; Base.metadata.create_all(bind=engine)"
-RUN python db/seed.py
-
 # Expose port
 EXPOSE 8000
 

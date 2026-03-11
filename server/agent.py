@@ -122,41 +122,7 @@ def run_agent(user_message: str, session_id: str) -> str:
         history = get_chat_history(db, session_id)
         messages = [SystemMessage(content=get_system_prompt())] + history
 
-        # DEBUG: Log the messages being sent to agent
-        print(f"\n=== DEBUG: Messages sent to agent (session {session_id}) ===")
-        for i, m in enumerate(messages):
-            msg_type = type(m).__name__
-            if isinstance(m, SystemMessage):
-                print(f"  [{i}] SystemMessage: {m.content[:150]}...")
-            elif isinstance(m, HumanMessage):
-                print(f"  [{i}] HumanMessage: '{m.content}'")
-            elif isinstance(m, AIMessage):
-                content_preview = m.content[:100] if m.content else "<empty>"
-                has_tools = bool(hasattr(m, 'tool_calls') and m.tool_calls)
-                print(f"  [{i}] AIMessage: content='{content_preview}' has_tool_calls={has_tools}")
-                if has_tools:
-                    for tc in m.tool_calls:
-                        print(f"      -> Tool: {tc.get('name')} args={tc.get('args')}")
-            elif isinstance(m, ToolMessage):
-                print(f"  [{i}] ToolMessage: name={m.name} content='{m.content[:100]}...'")
-        print("=== END DEBUG ===\n")
-
         response = agent.invoke({"messages": messages})
-
-        # DEBUG: Log all messages in response
-        print(f"\n=== DEBUG: Agent Response for session {session_id} ===")
-        for i, m in enumerate(response["messages"]):
-            msg_type = type(m).__name__
-            if isinstance(m, AIMessage):
-                print(f"  [{i}] AIMessage: content='{m.content[:100]}...' has_tool_calls={bool(hasattr(m, 'tool_calls') and m.tool_calls)}")
-                if hasattr(m, 'tool_calls') and m.tool_calls:
-                    for tc in m.tool_calls:
-                        print(f"      -> Tool: {tc.get('name')} with args {tc.get('args')}")
-            elif isinstance(m, ToolMessage):
-                print(f"  [{i}] ToolMessage: name={m.name} content='{m.content[:100]}...'")
-            else:
-                print(f"  [{i}] {msg_type}: {str(m)[:100]}")
-        print("=== END DEBUG ===\n")
 
         # Extract the final clean AI response (excluding tool calls)
         ai_messages = []

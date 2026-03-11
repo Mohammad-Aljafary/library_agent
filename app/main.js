@@ -119,7 +119,6 @@ async function newSession() {
 // ── Messages ──────────────────────────────────────────────
 function formatContent(content) {
   // Convert newlines to <br> and preserve formatting
-  console.log('Formatting content:', content.substring(0, 100), 'has newlines:', content.includes('\n'));
   return content
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
