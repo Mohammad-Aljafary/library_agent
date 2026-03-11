@@ -9,6 +9,9 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from pyrate_limiter import Duration, Limiter, Rate
+from fastapi_limiter.middleware import RateLimiterMiddleware
+
 from db.tables import get_session, init_db, Message, ToolCall
 from db.seed import seed_data
 from server.agent import run_agent, run_agent_stream
@@ -20,6 +23,10 @@ app.add_middleware(
     allow_origins=os.getenv("CORS_ORIGINS", "*").split(","),
     allow_methods=["*"],
     allow_headers=["*"],
+)
+app.add_middleware(
+    RateLimiterMiddleware,
+    limiter=Limiter(Rate(50, Duration.MINUTE))  # Limit to 50 requests per minute
 )
 
 

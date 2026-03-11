@@ -42,7 +42,7 @@ clean: ## Remove containers, volumes, images, and prune all
 	docker image prune -af
 
 reset-db: ## Wipe and re-seed the database
-	rm -f db/library.db
+	rm -f db/library.db db/library.db-journal
 	docker compose restart app
 
 pull-model: ## Pull / update the LLM model inside Ollama
