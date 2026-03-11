@@ -216,6 +216,8 @@ nginx/ssl/
 db/library.db
 db/library.db-journal
 *.db
+db/library.db-journal
+*.db
 *.db-journal
 
 # Editor
