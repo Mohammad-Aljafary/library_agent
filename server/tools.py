@@ -15,7 +15,6 @@ def make_tools(db: Session, session_id: str):
             result_json=json.dumps(result),
         )
         db.add(tc)
-        # Don't commit here — let the tool function commit after logging
 
     @tool
     def find_books(q: str, by: str = "title") -> list:

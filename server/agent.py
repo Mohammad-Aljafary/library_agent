@@ -18,7 +18,7 @@ def get_llm(streaming=False):
         temperature=float(os.environ.get("OLLAMA_TEMPERATURE", "0")),
         num_predict=int(os.environ.get("OLLAMA_NUM_PREDICT", "2048")),
         streaming=streaming,
-        format="",  # Ensure no JSON mode that could interfere
+        format="",
     )
 
 
@@ -29,7 +29,7 @@ def get_system_prompt() -> str:
 
 def get_chat_history(db: Session, session_id: str, max_messages: int = None) -> list:
     if max_messages is None:
-        max_messages = int(os.getenv("MAX_CHAT_HISTORY", "20"))
+        max_messages = int(os.environ.get("MAX_CHAT_HISTORY", "20"))
     """Build chat history including tool calls for conversational context.
     Limited to recent messages to reduce processing time.
     """
