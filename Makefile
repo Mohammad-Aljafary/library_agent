@@ -59,15 +59,3 @@ nginx/ssl/cert.pem:
 		-addext "subjectAltName=DNS:localhost,IP:127.0.0.1" 2>/dev/null
 	@chmod 600 nginx/ssl/key.pem
 	@echo "✅ Certificate created (valid 365 days)"
-
-
-#check the database in the docker compose file and if it exists, create the database file if it doesn't exist
-db/library.db:
-	@mkdir -p db
-	@if [ ! -f db/library.db ]; then \
-		touch db/library.db; \
-		chmod 666 db/library.db; \
-		echo "✅ Database file created at db/library.db"; \
-	else \
-		echo "✅ Database file already exists at db/library.db"; \
-	fi
