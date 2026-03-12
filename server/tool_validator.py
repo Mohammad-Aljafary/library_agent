@@ -123,8 +123,10 @@ class ToolCallValidator:
     """Validates tool selection against the user's detected intent."""
 
     def __init__(self, user_message: str):
-        self.user_message = user_message
-        self.matched_rule: IntentRule | None = self._detect_intent()
+        # Fix #8: guard against None
+        self.user_message = user_message or ""
+        self.matched_rules: list[IntentRule] = self._detect_all_intents()  # Fix #1
+        self.matched_rule = self.matched_rules[0] if self.matched_rules else None
 
     # ── public API ────────────────────────────────────────
     def validate(self, tool_name: str) -> tuple[bool, str]:
@@ -137,42 +139,33 @@ class ToolCallValidator:
             is_valid=False → tool should NOT run; *reason* explains why and
                              suggests the correct tool.
         """
-        if self.matched_rule is None:
+        if not self.matched_rules:
             # No strong intent detected → allow anything.
             return True, ""
 
-        # Forbidden-tool check (hard block on mutating tools).
-        if tool_name in self.matched_rule.forbidden_tools:
-            if tool_name in MUTATING_TOOLS:
-                suggestion = ", ".join(sorted(self.matched_rule.expected_tools))
-                reason = (
-                    f"WRONG TOOL: The user's intent is '{self.matched_rule.name}' "
-                    f"but you called '{tool_name}' which is forbidden for this intent. "
-                    f"Please use one of: {suggestion}. "
-                    f"Do NOT call '{tool_name}' for this request."
-                )
-                logger.warning(
-                    "Blocked mutating tool '%s' (intent=%s, user=%r)",
-                    tool_name,
-                    self.matched_rule.name,
-                    self.user_message[:80],
-                )
-                return False, reason
-            else:
-                # Non-mutating forbidden tool → warn but allow.
-                logger.info(
-                    "Non-mutating tool '%s' not ideal for intent '%s', allowing.",
-                    tool_name,
-                    self.matched_rule.name,
-                )
-                return True, ""
+        all_forbidden = all(
+            tool_name in rule.forbidden_tools
+            for rule in self.matched_rules
+        )
+        if all_forbidden and tool_name in MUTATING_TOOLS:
+            suggestion = ", ".join(
+                sorted({t for r in self.matched_rules for t in r.expected_tools})
+            )
+            reason = (
+                f"WRONG TOOL: Called '{tool_name}' but it is forbidden "
+                f"for all detected intents: "
+                f"{[r.name for r in self.matched_rules]}. "
+                f"Use one of: {suggestion}."
+            )
+            logger.warning("Blocked mutating tool '%s'", tool_name)
+            return False, reason
 
         return True, ""
 
     # ── private ───────────────────────────────────────────
-    def _detect_intent(self) -> IntentRule | None:
-        for rule in INTENT_RULES:
-            if rule.pattern.search(self.user_message):
-                logger.debug("Intent detected: %s", rule.name)
-                return rule
-        return None
+    def _detect_all_intents(self) -> list[IntentRule]:
+        """Fix #1: collect ALL matching rules instead of first match."""
+        cleaned = re.sub(
+            r"\b(don't|do not|cancel|stop|never|not)\s+", "", self.user_message, flags=re.IGNORECASE
+        )
+        return [rule for rule in INTENT_RULES if rule.pattern.search(cleaned)]
