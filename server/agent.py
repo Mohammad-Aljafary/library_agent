@@ -11,7 +11,6 @@ from db.tables import Message, ToolCall, engine
 from server.tools import make_tools, set_active_validator
 from server.tool_validator import ToolCallValidator
 
-
 def get_llm(streaming=False):
     return ChatOllama(
         model=os.environ["OLLAMA_MODEL"],
@@ -103,55 +102,89 @@ def get_chat_history(db: Session, session_id: str, max_messages: int = None) -> 
     return history
 
 
+WRONG_TOOL_MARKER = "WRONG TOOL:"
+MAX_WRONG_TOOL_RETRIES = 2
+
 async def run_agent_stream(user_message: str, session_id: str):
-    """
-    Stream agent responses for better UX.
-    
-    Note: With ReAct agents, we must wait for all tool calls to complete before
-    streaming the final response. This ensures users only see clean results.
-    """
     db = Session(engine)
     try:
         tools = make_tools(db, session_id)
-        llm = get_llm(streaming=False)  # Disable LLM streaming to avoid showing reasoning
+        llm = get_llm(streaming=False)
         agent = create_react_agent(llm, tools)
 
-        # Save user message
         db.add(Message(session_id=session_id, role="user", content=user_message))
         db.commit()
 
-        # Install the tool-call validator for this request so that
-        # mutating tools are blocked if they don't match the user intent.
         validator = ToolCallValidator(user_message)
         set_active_validator(validator)
 
-        # Build message list with history
         history = get_chat_history(db, session_id)
         messages = [SystemMessage(content=get_system_prompt())] + history
 
-        # Execute agent and get clean final response
-        response = agent.invoke({"messages": messages})
-        
-        # Extract the final clean AI response (excluding tool calls)
+        # ── retry loop ────────────────────────────────────────────
+        wrong_tool_retries = 0
+        response = None
+
+        while wrong_tool_retries <= MAX_WRONG_TOOL_RETRIES:
+            response = agent.invoke(
+                {"messages": messages},
+                config={"recursion_limit": 10}   # prevent infinite tool loops
+            )
+
+            # check if any ToolMessage contains a wrong-tool error
+            wrong_tool_errors = [
+                m for m in response["messages"]
+                if isinstance(m, ToolMessage)
+                and WRONG_TOOL_MARKER in (m.content or "")
+            ]
+
+            if not wrong_tool_errors:
+                break  # all good
+
+            wrong_tool_retries += 1
+            logger.warning(
+                "Wrong tool error detected in ToolMessage (retry %d/%d): %s",
+                wrong_tool_retries,
+                MAX_WRONG_TOOL_RETRIES,
+                wrong_tool_errors[-1].content[:120],
+            )
+
+            if wrong_tool_retries > MAX_WRONG_TOOL_RETRIES:
+                logger.error("Max wrong-tool retries reached for session %s", session_id)
+                break
+
+            # feed the error back as context for the next attempt
+            messages = messages + [
+                HumanMessage(
+                    content=(
+                        f"You used the wrong tool. "
+                        f"Error: {wrong_tool_errors[-1].content}. "
+                        f"Please retry with the correct tool."
+                    )
+                )
+            ]
+        # ── end retry loop ────────────────────────────────────────
+
+        # Extract final clean AI response
         ai_messages = []
         tool_results = []
-        
+
         for m in response["messages"]:
             if isinstance(m, AIMessage):
-                # Skip messages that are just tool calls (no text content)
                 if hasattr(m, 'tool_calls') and m.tool_calls and not m.content:
                     continue
-                # Skip messages with tool call syntax in content
-                if m.content and not any(x in m.content for x in ['{"name":', '"parameters":', 'tool_calls']):
+                if m.content and not any(
+                    x in m.content for x in ['{"name":', '"parameters":', 'tool_calls']
+                ):
                     ai_messages.append(m)
             elif isinstance(m, ToolMessage):
-                tool_results.append(m)
-        
-        # Get the final response, or create one from tool results if agent didn't generate one
+                # ── filter out wrong-tool errors from tool results ──
+                if WRONG_TOOL_MARKER not in (m.content or ""):
+                    tool_results.append(m)
+
         if ai_messages:
             final_response = ai_messages[-1].content
         elif tool_results:
-            # Fallback: if LLM didn't generate a final response, show the tool result
             last_tool = tool_results[-1]
             try:
                 result_data = json.loads(last_tool.content)
@@ -161,21 +194,24 @@ async def run_agent_stream(user_message: str, session_id: str):
                     final_response = f"Result: {last_tool.content}"
             except:
                 final_response = last_tool.content
+        elif wrong_tool_retries > MAX_WRONG_TOOL_RETRIES:
+            # graceful degradation after exhausting retries
+            final_response = "I'm sorry, I couldn't complete that action. Please rephrase your request."
         else:
             final_response = "I couldn't process that request."
 
-        # Stream the clean response word by word for better UX
+        # Stream the clean response
         words = final_response.split()
         for i, word in enumerate(words):
-            await asyncio.sleep(0.03)  # Small delay for smooth appearance
+            await asyncio.sleep(0.03)
             yield word + (" " if i < len(words) - 1 else "")
 
-        # Save assistant message
         db.add(Message(session_id=session_id, role="assistant", content=final_response))
         db.commit()
+
     except Exception as e:
         db.rollback()
         raise
     finally:
-        set_active_validator(None)  # Clear validator for this request
+        set_active_validator(None)
         db.close()
