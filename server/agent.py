@@ -13,10 +13,10 @@ from server.tools import make_tools
 
 def get_llm(streaming=False):
     return ChatOllama(
-        model=os.getenv("OLLAMA_MODEL", "qwen2.5:3b"),
-        base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
-        temperature=int(os.getenv("OLLAMA_TEMPERATURE", "0")),
-        num_predict=int(os.getenv("OLLAMA_NUM_PREDICT", "2048")),
+        model=os.environ["OLLAMA_MODEL"],
+        base_url=os.environ["OLLAMA_BASE_URL"],
+        temperature=float(os.environ.get("OLLAMA_TEMPERATURE", "0")),
+        num_predict=int(os.environ.get("OLLAMA_NUM_PREDICT", "2048")),
         streaming=streaming,
         format="",  # Ensure no JSON mode that could interfere
     )
@@ -100,72 +100,6 @@ def get_chat_history(db: Session, session_id: str, max_messages: int = None) -> 
             ))
     
     return history
-
-
-def run_agent(user_message: str, session_id: str) -> str:
-    """
-    Run the agent with its own DB session so the work is never
-    interrupted by FastAPI request-lifecycle cleanup.
-    """
-    db = Session(engine)
-    try:
-        tools = make_tools(db, session_id)
-        llm = get_llm()
-
-        agent = create_react_agent(llm, tools)
-
-        # Save user message
-        db.add(Message(session_id=session_id, role="user", content=user_message))
-        db.commit()
-
-        # Build message list with history
-        history = get_chat_history(db, session_id)
-        messages = [SystemMessage(content=get_system_prompt())] + history
-
-        response = agent.invoke({"messages": messages})
-
-        # Extract the final clean AI response (excluding tool calls)
-        ai_messages = []
-        tool_results = []
-        
-        for m in response["messages"]:
-            if isinstance(m, AIMessage):
-                # Skip messages that are just tool calls (no text content)
-                if hasattr(m, 'tool_calls') and m.tool_calls and not m.content:
-                    continue
-                # Skip messages with tool call syntax in content
-                if m.content and not any(x in m.content for x in ['{"name":', '"parameters":', 'tool_calls']):
-                    ai_messages.append(m)
-            elif isinstance(m, ToolMessage):
-                tool_results.append(m)
-        
-        # Get the final response, or create one from tool results if agent didn't generate one
-        if ai_messages:
-            assistant_reply = ai_messages[-1].content
-        elif tool_results:
-            # Fallback: if LLM didn't generate a final response, show the tool result
-            last_tool = tool_results[-1]
-            try:
-                result_data = json.loads(last_tool.content)
-                if isinstance(result_data, list) and len(result_data) > 0:
-                    assistant_reply = f"Found {len(result_data)} results. Here they are: {last_tool.content}"
-                else:
-                    assistant_reply = f"Result: {last_tool.content}"
-            except:
-                assistant_reply = last_tool.content
-        else:
-            assistant_reply = "I couldn't process that request."
-
-        # Save assistant message
-        db.add(Message(session_id=session_id, role="assistant", content=assistant_reply))
-        db.commit()
-
-        return assistant_reply
-    except Exception as e:
-        db.rollback()
-        raise
-    finally:
-        db.close()
 
 
 async def run_agent_stream(user_message: str, session_id: str):

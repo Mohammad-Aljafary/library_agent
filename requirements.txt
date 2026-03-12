@@ -1,5 +1,6 @@
 sqlalchemy
 langchain
+langgraph
 langchain-ollama
 langchain-core
 fastapi

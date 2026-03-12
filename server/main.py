@@ -19,7 +19,7 @@ from starlette.responses import JSONResponse
 
 from db.tables import get_session, init_db, Message, ToolCall
 from db.seed import seed_data
-from server.agent import run_agent, run_agent_stream
+from server.agent import  run_agent_stream
 
 limiter = Limiter(Rate(50, Duration.MINUTE))
 
