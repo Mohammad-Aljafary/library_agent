@@ -19,17 +19,9 @@ services:
       dockerfile: Dockerfile
     container_name: library-app
     expose:
-      - "${APP_PORT:-8000}"
-    environment:
-      - DATABASE_HOST=${DATABASE_HOST:-sqlite:///./db/library.db}
-      - OLLAMA_BASE_URL=http://ollama:11434
-      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:3b}
-      - APP_PORT=${APP_PORT:-8000}
-      - APP_HOST=${APP_HOST:-0.0.0.0}
-      - CORS_ORIGINS=${CORS_ORIGINS:-*}
-      - OLLAMA_TEMPERATURE=${OLLAMA_TEMPERATURE:-0}
-      - OLLAMA_NUM_PREDICT=${OLLAMA_NUM_PREDICT:-2048}
-      - MAX_CHAT_HISTORY=${MAX_CHAT_HISTORY:-20}
+      - "${APP_PORT}"
+    env_file:
+      - .env
     volumes:
       - ./db:/app/db
       - ./app:/app/app

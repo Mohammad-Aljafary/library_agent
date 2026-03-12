@@ -6,7 +6,7 @@ import os
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_HOST", "sqlite:///./db/library.db")
+DATABASE_URL = os.getenv("DATABASE_HOST")
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 
 class Base(DeclarativeBase):
