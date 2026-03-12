@@ -11,6 +11,7 @@ A conversational AI agent for managing a library's books, customers, and orders 
 - 💬 Multi-session chat support
 - 🔄 Real-time streaming responses
 - 🔒 HTTPS with Nginx reverse proxy
+- 🛡️ Tool call validation — blocks wrong mutating tools before DB changes occur
 
 ## Tech Stack
 
@@ -129,7 +130,6 @@ All configuration lives in `.env` (see `.env.example` for reference).
 | GET | `/sessions` | List all sessions |
 | GET | `/session/{id}/messages` | Get messages for a session |
 | DELETE | `/session/{id}` | Delete a session |
-| POST | `/chat` | Send a message (JSON) |
 | POST | `/chat/stream` | Send a message (SSE stream) |
 | GET | `/health` | Health check |
 
@@ -158,7 +158,8 @@ All configuration lives in `.env` (see `.env.example` for reference).
 ├── server/              # Backend
 │   ├── main.py
 │   ├── agent.py
-│   └── tools.py
+│   ├── tools.py
+│   └── tool_validator.py
 ├── prompts/
 │   └── system_prompt.txt
 ├── nginx/
@@ -168,6 +169,38 @@ All configuration lives in `.env` (see `.env.example` for reference).
 ├── Makefile
 └── requirements.txt
 ```
+
+## Tool Call Validation
+
+The agent includes a validation layer (`server/tool_validator.py`) that detects the user's intent from their message and blocks **mutating tools** if they don't match — preventing the LLM from causing unintended database changes.
+
+### How It Works
+
+1. Before each agent invocation, a `ToolCallValidator` is created for the user's message.
+2. It scans the message against **regex intent rules** to detect what the user wants.
+3. When a mutating tool (`create_order`, `add_to_order`, `restock_book`, `update_price`) is about to run, the validator checks it against the detected intent.
+4. If blocked, the tool returns a corrective `{"error": "WRONG TOOL: use X instead"}` — causing the ReAct agent to self-correct in the next iteration.
+5. Read-only tools (`find_books`, `order_status`, etc.) are never hard-blocked.
+
+### Intent → Tool Mapping
+
+| User Says | Detected Intent | Blocked Tools |
+|-----------|----------------|---------------|
+| `"book it"`, `"buy it"`, `"place an order"` | `create_new_order` | `add_to_order`, `restock_book`, `update_price` |
+| `"add it to order 5"` | `add_to_existing_order` | `create_order` |
+| `"restock the book"`, `"add stock"` | `restock` | `create_order`, `add_to_order`, `update_price` |
+| `"update price to 20"`, `"set price"` | `update_price` | `create_order`, `add_to_order`, `restock_book` |
+| `"find books by"`, `"search"`, `"show me"` | `search_books` | all mutating tools |
+| `"list orders"`, `"all orders"` | `list_orders` | `create_order`, `add_to_order` |
+| `"inventory"`, `"low stock"` | `inventory` | `create_order`, `add_to_order` |
+| `"order status"`, `"check order"` | `order_status` | `create_order`, `add_to_order` |
+
+### Key Behaviours
+
+- **Multi-intent messages** (`"find books and book it"`) — a tool is blocked only if it is forbidden in *all* matched intents, not just one.
+- **Negation stripping** (`"don't book it"`) — negation words are removed before matching so they don't incorrectly trigger intents.
+- **Thread / async safety** — the validator is installed per-request via `contextvars.ContextVar` so concurrent requests never share state.
+- No intent matched → validator allows all tools (safe default for unrecognised messages).
 
 ## Troubleshooting
 
