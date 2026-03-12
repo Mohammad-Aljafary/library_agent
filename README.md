@@ -179,8 +179,26 @@ The agent includes a validation layer (`server/tool_validator.py`) that detects 
 1. Before each agent invocation, a `ToolCallValidator` is created for the user's message.
 2. It scans the message against **regex intent rules** to detect what the user wants.
 3. When a mutating tool (`create_order`, `add_to_order`, `restock_book`, `update_price`) is about to run, the validator checks it against the detected intent.
-4. If blocked, the tool returns a corrective `{"error": "WRONG TOOL: use X instead"}` — causing the ReAct agent to self-correct in the next iteration.
+4. If blocked, the tool returns a corrective `{"error": "WRONG TOOL: use X instead"}` — causing the ReAct agent to self-correct within the same invocation.
 5. Read-only tools (`find_books`, `order_status`, etc.) are never hard-blocked.
+
+### Self-Correction Retry Loop
+
+If the ReAct agent fails to self-correct within a single `invoke()` call (e.g. weak model or `recursion_limit` hit), `agent.py` implements an **outer retry loop**:
+
+```
+User: "book it"
+  → invoke() #1 → wrong tool used → WRONG TOOL error in ToolMessage
+    → retry #1: error fed back as HumanMessage context
+      → invoke() #2 → model corrects itself → create_order ✅
+```
+
+| Constant | Default | Description |
+|----------|---------|-------------|
+| `MAX_WRONG_TOOL_RETRIES` | `2` | Max outer retries before giving up |
+| `recursion_limit` | `10` | Max tool calls inside a single `invoke()` |
+
+**After exhausting retries** — the agent responds with a clean fallback message instead of surfacing the raw error to the user. Wrong-tool `ToolMessage` errors are also filtered out from the final response so they never reach the frontend.
 
 ### Intent → Tool Mapping
 
