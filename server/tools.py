@@ -1,7 +1,22 @@
 import json
+import logging
 from sqlalchemy.orm import Session
 from langchain_core.tools import tool
 from db.tables import Books, Customers, Orders, OrderItems, ToolCall
+from server.tool_validator import ToolCallValidator
+
+logger = logging.getLogger(__name__)
+
+# Module-level reference set by the agent before each invocation.
+# The validator is stored here so every tool can access it without
+# changing the LangChain @tool function signatures.
+_active_validator: ToolCallValidator | None = None
+
+
+def set_active_validator(validator: ToolCallValidator | None):
+    """Called by the agent layer to install the current request's validator."""
+    global _active_validator
+    _active_validator = validator
 
 
 def make_tools(db: Session, session_id: str):
@@ -15,6 +30,17 @@ def make_tools(db: Session, session_id: str):
             result_json=json.dumps(result),
         )
         db.add(tc)
+
+    def _guard(tool_name: str) -> str | None:
+        """Return an error string if the validator blocks *tool_name*, else None."""
+        if _active_validator is None:
+            return None
+        ok, reason = _active_validator.validate(tool_name)
+        if not ok:
+            log_tool_call(tool_name, {"_blocked": True}, {"error": reason})
+            db.commit()
+            return reason
+        return None
 
     @tool
     def find_books(q: str, by: str = "title") -> list:
@@ -44,6 +70,10 @@ def make_tools(db: Session, session_id: str):
             customer_id: the customer's ID
             items: list of dicts with 'isbn' and 'qty' keys, e.g. [{"isbn": "978-...", "qty": 2}]
         """
+        blocked = _guard("create_order")
+        if blocked:
+            return {"error": blocked}
+
         customer = db.query(Customers).filter(Customers.id == customer_id).first()
         if not customer:
             return {"error": f"Customer {customer_id} not found"}
@@ -89,6 +119,10 @@ def make_tools(db: Session, session_id: str):
             isbn: the book's ISBN
             qty: number of copies to add
         """
+        blocked = _guard("restock_book")
+        if blocked:
+            return {"error": blocked}
+
         book = db.query(Books).filter(Books.isbn == isbn).first()
         if not book:
             return {"error": f"Book with ISBN {isbn} not found"}
@@ -106,6 +140,10 @@ def make_tools(db: Session, session_id: str):
             isbn: the book's ISBN
             price: the new price
         """
+        blocked = _guard("update_price")
+        if blocked:
+            return {"error": blocked}
+
         book = db.query(Books).filter(Books.isbn == isbn).first()
         if not book:
             return {"error": f"Book with ISBN {isbn} not found"}
@@ -123,6 +161,10 @@ def make_tools(db: Session, session_id: str):
             order_id: the order ID to add items to
             items: list of dicts with 'isbn' and 'qty' keys, e.g. [{"isbn": "978-...", "qty": 1}]
         """
+        blocked = _guard("add_to_order")
+        if blocked:
+            return {"error": blocked}
+
         order = db.query(Orders).filter(Orders.id == order_id).first()
         if not order:
             return {"error": f"Order {order_id} not found"}

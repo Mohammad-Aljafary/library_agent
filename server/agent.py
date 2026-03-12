@@ -8,7 +8,8 @@ from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, Tool
 from sqlalchemy.orm import Session
 
 from db.tables import Message, ToolCall, engine
-from server.tools import make_tools
+from server.tools import make_tools, set_active_validator
+from server.tool_validator import ToolCallValidator
 
 
 def get_llm(streaming=False):
@@ -119,6 +120,11 @@ async def run_agent_stream(user_message: str, session_id: str):
         db.add(Message(session_id=session_id, role="user", content=user_message))
         db.commit()
 
+        # Install the tool-call validator for this request so that
+        # mutating tools are blocked if they don't match the user intent.
+        validator = ToolCallValidator(user_message)
+        set_active_validator(validator)
+
         # Build message list with history
         history = get_chat_history(db, session_id)
         messages = [SystemMessage(content=get_system_prompt())] + history
@@ -171,4 +177,5 @@ async def run_agent_stream(user_message: str, session_id: str):
         db.rollback()
         raise
     finally:
+        set_active_validator(None)  # Clear validator for this request
         db.close()
