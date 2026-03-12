@@ -14,11 +14,23 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from pyrate_limiter import Duration, Limiter, Rate
-from fastapi_limiter.middleware import RateLimiterMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
 
 from db.tables import get_session, init_db, Message, ToolCall
 from db.seed import seed_data
 from server.agent import run_agent, run_agent_stream
+
+limiter = Limiter(Rate(50, Duration.MINUTE))
+
+
+class RateLimiterMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        client_ip = request.client.host if request.client else "unknown"
+        if not limiter.try_acquire(client_ip):
+            return JSONResponse({"detail": "Too many requests"}, status_code=429)
+        return await call_next(request)
+
 
 app = FastAPI(title="Library Desk Agent")
 
@@ -28,10 +40,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.add_middleware(
-    RateLimiterMiddleware,
-    limiter=Limiter(Rate(50, Duration.MINUTE))  # Limit to 50 requests per minute
-)
+app.add_middleware(RateLimiterMiddleware)
 
 
 @app.on_event("startup")
@@ -87,12 +96,6 @@ def get_messages(session_id: str, db: Session = Depends(get_session)):
 
 
 # ── Chat endpoint ──────────────────────────────────────────
-@app.post("/chat")
-async def chat(req: ChatRequest):
-    reply = await asyncio.to_thread(run_agent, req.message, req.session_id)
-    return {"reply": reply}
-
-
 @app.post("/chat/stream")
 async def chat_stream(req: ChatRequest):
     """Stream responses for better perceived speed."""

@@ -4,4 +4,5 @@ langchain-ollama
 langchain-core
 fastapi
 uvicorn[standard]
+pyrate-limiter
 python-dotenv
