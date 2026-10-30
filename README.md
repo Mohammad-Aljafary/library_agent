@@ -27,7 +27,7 @@ Prerequisites: **Docker** and **Docker Compose**
 
 ```bash
 # 1. Clone and enter the project
-git clone <repo-url> && cd assessment
+git clone <repo-url> && cd library_agent
 
 # 2. Copy the env file and adjust if needed
 cp .env.example .env
